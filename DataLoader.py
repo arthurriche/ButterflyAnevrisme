@@ -21,45 +21,48 @@ class Dataset(BaseDataset):
         self.files = os.listdir(folder_path)
         self.files = [file for file in self.files if file.endswith(".xdmf")]
         self.files.sort()
-
-        self.number_files = len(self.files)
+        self.len_time = 80
+        self.number_files = len(self.files) * self.len_time
+        self.encode_id = {i+t:(i,t) for t,i in product(range(self.len_time),range(len(self.files)))}
+        
 
 
     def __len__(self):
       return self.number_files
 
     def __getitem__(self,id):
-        meshes = xdmf_to_meshes(self.folder_path+self.files[id])
-        graph_data = []
-        for t in range(len(meshes)):
-          if t == 0:
-            mesh = meshes[t]
+        i,t = self.encode_id[id]
+        meshes = self.xdmf_to_meshes(self.folder_path+self.files[i])
+        
+        mesh = meshes[t]
             
-            #Add constant graph structure
-            node_edges = []
-            for tetra in mesh.cells_dict['tetra']:
-              for node,neighbor in product(tetra,tetra):
-                if node != neighbor:
-                  node_edges.append([node,neighbor])
-            edges = torch.from_numpy(np.array(node_edges)).to(self.device)
-            pos = torch.from_numpy(mesh.points).to(self.device)
-            wall_labels = classify_vertices(mesh, "Vitesse")  # Assuming classify_vertices returns 0 for wall, 1 for others
-            wall_labels_tensor = torch.tensor(wall_labels, device=self.device).unsqueeze(1)  # Convert to tensor and add dimension
-            pos = torch.cat([pos, wall_labels_tensor], dim=1)  # Concatenate with pos
-          
-          data = torch.from_numpy(np.concatenate([mesh.point_data['Vitesse'],
-                                                  mesh.point_data['Pression'][:,None]],axis=1)).to(self.device)
-          current_graph_data = {
-                                "x":data,
-                                "pos":pos,
-                                "edge_index":edges,
-                                }
-          
-          graph_data.append(Data(x=current_graph_data['x'],
-                                 pos=current_graph_data['pos'],
-                                 edge_index=current_graph_data['edge_index']))
+        #Add constant graph structure
+        node_edges = []
+        for tetra in mesh.cells_dict['tetra']:
+          for node,neighbor in product(tetra,tetra):
+            if node != neighbor:
+              node_edges.append([node,neighbor])
+        edges = torch.from_numpy(np.array(node_edges)).to(self.device)
+        pos = torch.from_numpy(mesh.points).to(self.device)
+        wall_labels = self.classify_vertices(mesh, "Vitesse")  # Assuming classify_vertices returns 0 for wall, 1 for others
+        wall_labels_tensor = torch.tensor(wall_labels, device=self.device).unsqueeze(1)  # Convert to tensor and add dimension
+        pos = torch.cat([pos, wall_labels_tensor], dim=1)  # Concatenate with pos
+        
+        data = torch.from_numpy(np.concatenate([mesh.point_data['Vitesse'],
+                                                mesh.point_data['Pression'][:,None]],axis=1)).to(self.device)
+        current_graph_data = {
+                              "x":data,
+                              "pos":pos,
+                              "edge_index":edges,
+                              }
+        
+        graph_data = Data(x=current_graph_data['x'],
+                                pos=current_graph_data['pos'],
+                                edge_index=current_graph_data['edge_index'],
+                                y=torch.tensor([i,t]))
 
         return graph_data
+      
     @staticmethod
     def classify_vertices(mesh: meshio.Mesh, velocity_key: str = "Vitesse") -> np.ndarray:
       """
