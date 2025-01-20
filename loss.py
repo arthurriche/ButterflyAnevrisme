@@ -4,7 +4,7 @@ import torch.nn as nn
 class FlowPredictionLoss(nn.Module):
     def __init__(self):
         super(FlowPredictionLoss, self).__init__()
-        self.mse_loss = nn.MSELoss()
+        self.mse_loss = nn.MSELoss(reduction='sum')  # Change to 'sum' for accumulation
 
     def forward(self, predictions, targets):
         """
@@ -17,7 +17,7 @@ class FlowPredictionLoss(nn.Module):
         Returns:
             torch.Tensor: The computed MSE loss.
         """
-        loss = 0
+        total_loss = torch.tensor(0.0, device=predictions[0].x.device, requires_grad=True)
         for pred, target in zip(predictions, targets):
-            loss += self.mse_loss(pred.x, target.x)
-        return loss / len(predictions)
+            total_loss = total_loss + self.mse_loss(pred.x, target.x)
+        return total_loss / len(predictions)  # Return tensor instead of float
