@@ -43,6 +43,9 @@ class Dataset(BaseDataset):
                   node_edges.append([node,neighbor])
             edges = torch.from_numpy(np.array(node_edges)).to(self.device)
             pos = torch.from_numpy(mesh.points).to(self.device)
+            wall_labels = classify_vertices(mesh, "Vitesse")  # Assuming classify_vertices returns 0 for wall, 1 for others
+            wall_labels_tensor = torch.tensor(wall_labels, device=self.device).unsqueeze(1)  # Convert to tensor and add dimension
+            pos = torch.cat([pos, wall_labels_tensor], dim=1)  # Concatenate with pos
           
           data = torch.from_numpy(np.concatenate([mesh.point_data['Vitesse'],
                                                   mesh.point_data['Pression'][:,None]],axis=1)).to(self.device)
@@ -57,7 +60,26 @@ class Dataset(BaseDataset):
                                  edge_index=current_graph_data['edge_index']))
 
         return graph_data
-    
+    @staticmethod
+    def classify_vertices(mesh: meshio.Mesh, velocity_key: str = "Vitesse") -> np.ndarray:
+      """
+      Classify each vertex of the mesh as being on the wall or in the flow.
+
+      Parameters:
+          mesh: The mesh object containing point data.
+          velocity_key: The key for the velocity data in the mesh point_data.
+
+      Returns:
+          A numpy array of labels (0 for wall, 1 for flow).
+      """
+      if velocity_key not in mesh.point_data:
+          raise ValueError(f"Velocity data key '{velocity_key}' not found in mesh point_data.")
+
+      velocities = np.array(mesh.point_data[velocity_key])  # Shape: (num_points, 3)
+      speed_norm = np.linalg.norm(velocities, axis=1)  # Compute the norm of velocity for each vertex
+      labels = np.where(speed_norm == 0, 0, 1)  # 0 for wall, 1 for flow
+      return labels
+        
     @staticmethod
     def xdmf_to_meshes(xdmf_file_path: str) -> List[meshio.Mesh]:
       """
