@@ -5,6 +5,7 @@ from data_loader import Dataset
 from sklearn.metrics import mean_squared_error
 from encoder_decoder import Encoder, Decoder
 from message_passing import GraphNetBlock  # Import the GraphNetBlock
+import os
 
 def check_encoder_decoder(encoder, decoder, dataloader):
     """
@@ -34,7 +35,12 @@ def check_encoder_decoder(encoder, decoder, dataloader):
 if __name__ == '__main__':
     # Load the model
     model = FlowPredictor()
-    model.load_state_dict(torch.load("flow_predictor.pth"))
+    model_path = "flow_predictor.pth"
+    if os.path.exists(model_path):
+        model.load_state_dict(torch.load(model_path, weights_only=True))
+    else:
+        print(f"Model file {model_path} not found. Please train the model first.")
+        exit(1)
     model.eval()
 
     # Load the dataset

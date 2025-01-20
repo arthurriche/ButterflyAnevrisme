@@ -65,14 +65,22 @@ class EdgeBlock(nn.Module):
         Returns:
             Data: An updated graph with new edge attributes.
         """
-        edge_inputs = torch.cat(
-            [
-                graph.edge_attr,
-                graph.x[graph.edge_index[0]],
-                graph.x[graph.edge_index[1]]
-            ], dim=1
-        )
-
+        # Get sender and receiver node features
+        sender_features = graph.x[graph.edge_index[0]]
+        receiver_features = graph.x[graph.edge_index[1]]
+        
+        # Ensure edge_attr has correct dimensions
+        if graph.edge_attr.size(1) != 4:
+            num_edges = graph.edge_index.size(1)
+            graph.edge_attr = torch.zeros((num_edges, 4), device=graph.x.device)
+        
+        # Concatenate features
+        edge_inputs = torch.cat([
+            graph.edge_attr,  # [num_edges, 4]
+            sender_features,  # [num_edges, hidden_size]
+            receiver_features  # [num_edges, hidden_size]
+        ], dim=1)
+        
         edge_attr_ = self._model_fn(edge_inputs)
 
         return Data(
@@ -141,8 +149,9 @@ class GraphNetBlock(nn.Module):
     ):
         super(GraphNetBlock, self).__init__()
 
-        # Corrected edge_input_dim to match the actual concatenated edge features
-        edge_input_dim = 4 + 2 * hidden_size  # 4 edge attributes + 2 * hidden_size for node features
+        # Edge input: 4 (edge features) + hidden_size (sender) + hidden_size (receiver)
+        edge_input_dim = 4 + hidden_size + hidden_size
+        # Node input: hidden_size (current features) + hidden_size (aggregated edge features)
         node_input_dim = 2 * hidden_size
 
         self.edge_block = EdgeBlock(model_fn=build_mlp(

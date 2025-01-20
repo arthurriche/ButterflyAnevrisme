@@ -1,4 +1,3 @@
-
 import torch
 import torch.nn as nn
 from torch_geometric.data import Data
@@ -67,4 +66,3 @@ class FlowPredictor(nn.Module):
             current_graph = decoded_graph.clone()
 
         return predictions
-    

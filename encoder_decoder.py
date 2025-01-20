@@ -108,9 +108,10 @@ class Encoder(nn.Module):
         node_latents = self.node_encoder(node_attr)
         print("Node latents shape:", node_latents.shape)
 
-        # Initialize edge_attr if it doesn't exist
-        if graph.edge_attr is None:
-            graph.edge_attr = torch.zeros((graph.edge_index.size(1), 4), device=node_latents.device)
+        # Initialize edge_attr with 4 features if it doesn't exist or has wrong dimensions
+        if graph.edge_attr is None or graph.edge_attr.size(1) != 4:
+            num_edges = graph.edge_index.size(1)
+            graph.edge_attr = torch.zeros((num_edges, 4), dtype=torch.float32, device=node_latents.device)
         print("Edge attributes shape:", graph.edge_attr.shape)
 
         return Data(
