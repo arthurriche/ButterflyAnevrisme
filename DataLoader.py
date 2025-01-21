@@ -45,7 +45,7 @@ class Dataset(BaseDataset):
 
 
         if self.delta_speed:
-          next_data = next_data - data
+            next_data = next_data - data
         #Structure the information
         current_graph_data = {
                               "x":data,
@@ -69,9 +69,9 @@ class Dataset(BaseDataset):
     def mesh_to_graph_data(self,mesh):
         node_edges = []
         for tetra in mesh.cells_dict['tetra']:
-          for node,neighbor in product(tetra,tetra):
-            if node != neighbor:
-              node_edges.append([node,neighbor])
+            for node,neighbor in product(tetra,tetra):
+                if node != neighbor:
+                    node_edges.append([node,neighbor])
         edges = torch.from_numpy(np.array(node_edges)).to(self.device)
         pos = torch.from_numpy(mesh.points).to(self.device)
         wall_labels = self.classify_vertices(mesh, "Vitesse")  # Assuming classify_vertices returns 0 for wall, 1 for others
