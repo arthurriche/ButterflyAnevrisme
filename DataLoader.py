@@ -24,7 +24,8 @@ class Dataset(BaseDataset):
         self.len_time = 79
         self.number_files = len(self.files) * self.len_time
         self.encode_id = {i*self.len_time+t:(i,t) for t,i in product(range(self.len_time),range(len(self.files)))}
-
+        assert os.path.exists(self.folder_path)
+        assert os.path.exists(os.path.join(self.folder_path, self.files[0]))
     def __len__(self):
       return self.number_files
 
