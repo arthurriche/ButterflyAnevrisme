@@ -23,7 +23,7 @@ class Dataset(BaseDataset):
         self.files.sort()
         self.len_time = 79
         self.number_files = len(self.files) * self.len_time
-        self.encode_id = {i+t:(i,t) for t,i in product(range(self.len_time),range(len(self.files)))}
+        self.encode_id = {i*self.len_time+t:(i,t) for t,i in product(range(self.len_time),range(len(self.files)))}
 
     def __len__(self):
       return self.number_files
