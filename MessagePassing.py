@@ -68,7 +68,7 @@ class EdgeBlock(nn.Module):
         """
         edge_inputs = torch.concat(
             [
-                # graph.edge_attr,
+                graph.edge_attr,
                 graph.x[graph.edge_index[0]],
                 graph.x[graph.edge_index[1]]
             ], dim=1
