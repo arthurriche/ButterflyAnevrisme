@@ -171,7 +171,7 @@ def single_gpu_train():
                 
                 with torch.amp.autocast(device_type='cuda' if torch.cuda.is_available() else 'cpu'):
                     predictions = model(initial_graph)
-                    loss = loss_fn(predictions, [initial_graph]) / gradient_accumulation_steps
+                    loss = loss_fn(predictions, initial_graph) / gradient_accumulation_steps
 
                 # Gradient accumulation
                 scaler.scale(loss).backward()

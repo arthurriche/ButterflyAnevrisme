@@ -3,6 +3,8 @@ import torch.nn as nn
 from torch_scatter import scatter_add
 from torch_geometric.data import Data
 
+from torch_scatter import scatter_add
+
 def build_mlp(
     in_size: int,
     hidden_size: int,
@@ -18,11 +20,11 @@ def build_mlp(
         - hidden_size (int): The size of the hidden layers.
         - out_size (int): The size of the output layer.
         - nb_of_layers (int, optional): The number of layers in the MLP, including the input and output layers. Defaults to 4.
-        - lay_norm (bool, optional): Whether to include Layer Normalization. Defaults to True.
 
     Returns:
         - nn.Module: The constructed MLP model.
     """
+    # Initialize the model with the first layer.
     layers = []
     layers.append(nn.Linear(in_size, hidden_size))
     layers.append(nn.ReLU())
@@ -37,13 +39,14 @@ def build_mlp(
         if lay_norm:
             layers.append(nn.LayerNorm(hidden_size))
 
-    # Move the output layer outside the loop
+    # Add the output layer
     layers.append(nn.Linear(hidden_size, out_size))
 
+    # Construct the model using the specified layers.
     module = nn.Sequential(*layers)
 
     return module
-
+  
 class EdgeBlock(nn.Module):
     """A block that updates the attributes of the edges in a graph based on the features of the
     sending and receiving nodes, as well as the original edge attributes.
@@ -53,12 +56,11 @@ class EdgeBlock(nn.Module):
     """
 
     def __init__(self, model_fn=None):
+
         super(EdgeBlock, self).__init__()
         self._model_fn = model_fn
-        self.edge_attr_cache = None
-        self.edge_size = 4
 
-    def forward(self, graph: Data) -> Data:
+    def forward(self, graph):
         """Forward pass of the EdgeBlock.
 
         Args:
@@ -67,32 +69,19 @@ class EdgeBlock(nn.Module):
         Returns:
             Data: An updated graph with new edge attributes.
         """
-        # Pre-allocate edge attributes if needed
-        if self.edge_attr_cache is None or self.edge_attr_cache.size(0) != graph.edge_index.size(1):
-            self.edge_attr_cache = torch.zeros(
-                (graph.edge_index.size(1), self.edge_size),
-                device=graph.x.device
-            )
+        edge_inputs = torch.cat(
+            [
+                graph.x[graph.edge_index[0]],
+                graph.x[graph.edge_index[1]]
+            ], dim=1
+        )
 
-        # Use index_select instead of direct indexing for better performance
-        sender_features = torch.index_select(graph.x, 0, graph.edge_index[0])
-        receiver_features = torch.index_select(graph.x, 0, graph.edge_index[1])
-        
-        # Optimize concatenation using pre-allocated tensor
-        edge_inputs = torch.cat([
-            graph.edge_attr if graph.edge_attr.size(1) == self.edge_size else self.edge_attr_cache,
-            sender_features,
-            receiver_features
-        ], dim=1)
-        
         edge_attr_ = self._model_fn(edge_inputs)
 
         return Data(
-            x=graph.x,
-            edge_attr=edge_attr_,
-            edge_index=graph.edge_index,
-            pos=graph.pos
-        )
+                x=graph.x, edge_attr=edge_attr_, edge_index=graph.edge_index, pos=graph.pos
+            )
+
 
 class NodeBlock(nn.Module):
     """A block that updates the attributes of the nodes in a graph based on the aggregated features
@@ -103,12 +92,12 @@ class NodeBlock(nn.Module):
     """
 
     def __init__(self, model_fn=None):
-        super(NodeBlock, self).__init__()
-        self._model_fn = model_fn
-        self.cached_index = None
-        self.cached_size = None
 
-    def forward(self, graph: Data) -> Data:
+        super(NodeBlock, self).__init__()
+
+        self._model_fn = model_fn
+
+    def forward(self, graph):
         """Forward pass of the NodeBlock.
 
         Args:
@@ -117,29 +106,20 @@ class NodeBlock(nn.Module):
         Returns:
             Data: An updated graph with new node attributes.
         """
-        # Cache scatter indices for better performance
-        if self.cached_index is None or self.cached_size != graph.num_nodes:
-            self.cached_index = graph.edge_index[1]
-            self.cached_size = graph.num_nodes
-
-        # Use scatter_add with cached indices
+        edge_attr = graph.edge_attr
+        receivers_indx = graph.edge_index[1]
         agrr_edge_features = scatter_add(
-            graph.edge_attr, self.cached_index, dim=0, dim_size=self.cached_size
+            edge_attr, receivers_indx, dim=0, dim_size=graph.num_nodes
         )
-
-        # Pre-allocate tensor for concatenation
         node_inputs = torch.cat(
-            [graph.x, agrr_edge_features], dim=1
+            [graph.x, agrr_edge_features], dim=-1
         )
 
         x_ = self._model_fn(node_inputs)
 
         return Data(
-            x=x_,
-            edge_attr=graph.edge_attr,
-            edge_index=graph.edge_index,
-            pos=graph.pos
-        )
+                x=x_, edge_attr=graph.edge_attr, edge_index=graph.edge_index, pos=graph.pos
+            )
 
 class GraphNetBlock(nn.Module):
     """A block that sequentially applies an EdgeBlock and a NodeBlock to update the attributes of
@@ -158,50 +138,41 @@ class GraphNetBlock(nn.Module):
         use_gated_lstm=False,
         use_gated_mha=False,
     ):
+
         super(GraphNetBlock, self).__init__()
 
-        # Edge input: 4 (edge features) + hidden_size (sender) + hidden_size (receiver)
-        edge_input_dim = 4 + hidden_size + hidden_size
-        # Node input: hidden_size (current features) + hidden_size (aggregated edge features)
-        node_input_dim = 2 * hidden_size
+        edge_input_dim = 2 * hidden_size  # Corrected input dimension for EdgeBlock
+        node_input_dim = hidden_size + hidden_size  # Corrected input dimension for NodeBlock
 
         self.edge_block = EdgeBlock(model_fn=build_mlp(
             in_size=edge_input_dim,
             hidden_size=hidden_size,
-            out_size=hidden_size
+            out_size=hidden_size,
         ))
-        self.node_block = NodeBlock(model_fn=build_mlp(
-            in_size=node_input_dim,
-            hidden_size=hidden_size,
-            out_size=hidden_size
-        ))
+        self.node_block = NodeBlock(
+            model_fn=build_mlp(
+                in_size=node_input_dim,
+                hidden_size=hidden_size,
+                out_size=hidden_size,
+            )
+        )
 
-    def _apply_sub_block(self, graph: Data) -> Data:
+    def _apply_sub_block(self, graph):
         graph = self.edge_block(graph)
-        graph = self.node_block(graph)
-        return graph
+        return self.node_block(graph)
 
-    def forward(self, graph: Data) -> Data:
-        """Forward pass of the GraphNetBlock.
+    def forward(self, graph):
 
-        Args:
-            graph (Data): A graph containing node attributes, edge indices, and edge attributes.
-
-        Returns:
-            Data: An updated graph with new node and edge attributes.
-        """
-        graph_last = graph
+        graph_last = graph.clone()
         graph = self._apply_sub_block(graph)
 
-        # Keep the residual connection for nodes
+        # Ensure edge_attr is correctly initialized if not present
+        if graph_last.edge_attr is None or graph_last.edge_attr.size(1) != graph.edge_attr.size(1):
+            graph_last.edge_attr = torch.zeros_like(graph.edge_attr)
+
+        edge_attr = graph_last.edge_attr + graph.edge_attr
         x = graph_last.x + graph.x
-        
-        # Remove the residual connection for edges due to mismatched dimensions
-        edge_attr = graph.edge_attr
 
         return Data(
-            x=x,
-            edge_attr=edge_attr,
-            edge_index=graph.edge_index,
-            pos=graph.pos
-        )
+                x=x, edge_attr=edge_attr, edge_index=graph.edge_index, pos=graph.pos
+            )

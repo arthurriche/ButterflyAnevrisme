@@ -23,8 +23,8 @@ def check_architecture():
         batch_size=1,
         shuffle=True,
         num_workers=0,
-        pin_memory=True,
-        prefetch_factor=None
+        pin_memory=True
+        # Removed prefetch_factor for compatibility
     )
     print("DataLoader created successfully.")
 
