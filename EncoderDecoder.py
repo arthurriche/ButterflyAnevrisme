@@ -30,6 +30,9 @@ def convert_to_float(data):
 ##################################
 from torch_geometric.data import Data
 
+
+from torch_geometric.data import Data
+
 class Encoder(nn.Module):
     """Encoder class for encoding graph structures into latent representations.
 
@@ -47,13 +50,19 @@ class Encoder(nn.Module):
     """
 
     def __init__(
-        self, node_input_size=128, hidden_size=128, nb_of_layers=4
+        self, edge_input_size=3, node_input_size=6, hidden_size=128, nb_of_layers=4
     ):
 
         super(Encoder, self).__init__()
 
         self.node_encoder = build_mlp(
             in_size=node_input_size,
+            hidden_size=hidden_size,
+            out_size=hidden_size,
+            nb_of_layers=nb_of_layers
+        )
+        self.edge_encoder = build_mlp(
+            in_size=edge_input_size,
             hidden_size=hidden_size,
             out_size=hidden_size,
             nb_of_layers=nb_of_layers
@@ -70,18 +79,20 @@ class Encoder(nn.Module):
             - Data: A graph object with encoded node and edge attributes.
         """
         graph = convert_to_float(graph)
-        node_attr = graph.x.transpose(0,1)
-        node_latents = self.node_encoder(node_attr)
+        node_latents = self.node_encoder(graph.x)
+        edge_latents = self.edge_encoder(graph.edge_attr)
 
         return Data(
             x=node_latents,
             edge_index=graph.edge_index,
+            edge_attr=edge_latents,
+            y=graph.y,
             pos=graph.pos,
         )
 
-
 #########################
-  class Decoder(nn.Module):
+ 
+class Decoder(nn.Module):
     """Decoder class for decoding latent representations back into graph structures.
 
     This decoder takes the latent representations of nodes (and potentially edges) and decodes them back into
@@ -113,10 +124,12 @@ class Encoder(nn.Module):
             Data: A graph object where `x` has been decoded from the latent space back into the original graph space.
                   The structure of the graph (edges) remains unchanged.
         """
+        graph_x = self.decode_module(graph.x)
         return Data(
-            x=self.decode_module(graph.x).transpose(0,1),
+            x=graph_x,
             edge_index=graph.edge_index,
+            edge_attr=graph.edge_attr,
+            y=graph.y,
             pos=graph.pos,
         )
-
   ####################################"
