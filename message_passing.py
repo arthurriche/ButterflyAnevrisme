@@ -76,10 +76,6 @@ class EdgeBlock(nn.Module):
             ], dim=1
         )
 
-        # Ensure edge_inputs has the correct dimensions
-        if edge_inputs.size(1) != self._model_fn[0].in_features:
-            raise ValueError(f"Expected edge_inputs to have {self._model_fn[0].in_features} features, but got {edge_inputs.size(1)}")
-
         edge_attr_ = self._model_fn(edge_inputs)
 
         return Data(

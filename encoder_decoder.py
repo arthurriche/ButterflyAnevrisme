@@ -52,14 +52,17 @@ def convert_to_float(data):
     Returns:
         Data: L'objet Data avec toutes les données converties en float.
     """
-    #print("Converting data to float...")
+
     for key, value in data:
         if isinstance(value, torch.Tensor) and value.dtype == torch.float64:
             data[key] = value.to(torch.float32)
-    #print("Data converted to float.")
+
     return data
 
 ##################################
+from torch_geometric.data import Data
+
+
 from torch_geometric.data import Data
 
 class Encoder(nn.Module):
@@ -79,13 +82,19 @@ class Encoder(nn.Module):
     """
 
     def __init__(
-        self, node_input_size=4, hidden_size=128, nb_of_layers=4
+        self, edge_input_size=3, node_input_size=6, hidden_size=128, nb_of_layers=4
     ):
 
         super(Encoder, self).__init__()
 
         self.node_encoder = build_mlp(
             in_size=node_input_size,
+            hidden_size=hidden_size,
+            out_size=hidden_size,
+            nb_of_layers=nb_of_layers
+        )
+        self.edge_encoder = build_mlp(
+            in_size=edge_input_size,
             hidden_size=hidden_size,
             out_size=hidden_size,
             nb_of_layers=nb_of_layers
@@ -101,28 +110,20 @@ class Encoder(nn.Module):
         Returns:
             - Data: A graph object with encoded node and edge attributes.
         """
-        #print("Starting encoder forward pass...")
         graph = convert_to_float(graph)
-        node_attr = graph.x
-        #print("Node attributes shape:", node_attr.shape)
-        node_latents = self.node_encoder(node_attr)
-        #print("Node latents shape:", node_latents.shape)
-
-        # Initialize edge_attr with 4 features if it doesn't exist or has wrong dimensions
-        if graph.edge_attr is None or graph.edge_attr.size(1) != 4:
-            num_edges = graph.edge_index.size(1)
-            graph.edge_attr = torch.zeros((num_edges, 4), dtype=torch.float32, device=node_latents.device)
-        #print("Edge attributes shape:", graph.edge_attr.shape)
+        node_latents = self.node_encoder(graph.x)
+        edge_latents = self.edge_encoder(graph.edge_attr)
 
         return Data(
             x=node_latents,
             edge_index=graph.edge_index,
-            edge_attr=graph.edge_attr,
+            edge_attr=edge_latents,
+            y=graph.y,
             pos=graph.pos,
         )
 
-
 #########################
+ 
 class Decoder(nn.Module):
     """Decoder class for decoding latent representations back into graph structures.
 
@@ -138,7 +139,7 @@ class Decoder(nn.Module):
     """
 
     def __init__(
-        self, hidden_size: int = 128, output_size: int = 4, nb_of_layers: int = 4
+        self, hidden_size: int = 128, output_size: int = 2, nb_of_layers: int = 4
     ):
 
         super(Decoder, self).__init__()
@@ -155,12 +156,12 @@ class Decoder(nn.Module):
             Data: A graph object where `x` has been decoded from the latent space back into the original graph space.
                   The structure of the graph (edges) remains unchanged.
         """
-        #print("Starting decoder forward pass...")
-        decoded_x = self.decode_module(graph.x)
-        #print("Decoded node attributes shape:", decoded_x.shape)
+        graph_x = self.decode_module(graph.x)
         return Data(
-            x=decoded_x,
-            edge_attr=graph.edge_attr,
+            x=graph_x,
             edge_index=graph.edge_index,
+            edge_attr=graph.edge_attr,
+            y=graph.y,
             pos=graph.pos,
         )
+  ####################################"

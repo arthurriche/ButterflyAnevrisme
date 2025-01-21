@@ -6,9 +6,9 @@ import meshio
 from typing import List
 from torch.utils.data import Dataset as BaseDataset
 from torch_geometric.data import Data
+from torch_geometric.loader import DataLoader
 import torch
 import numpy as np
-from torch.utils.data import DataLoader
 
 class Dataset(BaseDataset):
     def __init__(
@@ -28,35 +28,32 @@ class Dataset(BaseDataset):
             for i in range(len(self.files))
             for t in range(self.len_time)
         }
-        self.delta_speed = False
-
+        self._meshes_cache = {}
 
     def __len__(self):
       return self.number_files
 
     def __getitem__(self,id):
         i,t = self.encode_id[id]
-        meshes = self.xdmf_to_meshes(self.folder_path+self.files[i])
-        
+        if self.files[i] not in self._meshes_cache:
+            self._meshes_cache[self.files[i]] = self.xdmf_to_meshes(self.folder_path + self.files[i])
+        meshes = self._meshes_cache[self.files[i]]
         mesh = meshes[t]
         
         #Get data from mesh
-        data, pos, edges, edge_attr = self.mesh_to_graph_data(mesh)
+        data, pos, edges, edges_attr = self.mesh_to_graph_data(mesh,t)
         
         #Get speed for t+1 mesh
         next_t_mesh = meshes[t+1]
-        next_data = self.get_speed_data(next_t_mesh)
+        next_data = self.get_speed_data(next_t_mesh,t+1)
 
-
-        if self.delta_speed:
-            next_data = next_data - data
         #Structure the information
         current_graph_data = {
                               "x":data,
                               "pos":pos,
                               "edge_index":edges,
-                              "edge_attr": edge_attr,
-                              "y":next_data,
+                              "edge_attr":edges_attr,
+                              "y":next_data[:,:-2],
                               }
         
         graph_data = Data(x=current_graph_data['x'],
@@ -67,30 +64,35 @@ class Dataset(BaseDataset):
 
         return graph_data
     
-    def get_speed_data(self,mesh):
-        data = torch.from_numpy(np.concatenate([mesh.point_data['Vitesse'],
-                                              mesh.point_data['Pression'][:,None]],axis=1)).to(self.device)
+    def get_speed_data(self, mesh, t):
+        if "Pression" not in mesh.point_data:
+            raise KeyError("Missing 'Pression' in mesh.point_data.")
+        if "Vitesse" not in mesh.point_data:
+            raise KeyError("Missing 'Vitesse' in mesh.point_data.")
+
+        pression = mesh.point_data["Pression"][:, None]
+        time_array = np.full(pression.shape, fill_value=t * 1e-2)
+        data = torch.from_numpy(
+            np.concatenate([mesh.point_data["Vitesse"], pression, time_array], axis=1)
+        ).to(self.device)
         return data
     
-    def mesh_to_graph_data(self,mesh):
+    def mesh_to_graph_data(self,mesh,t):
         node_edges = []
+        edges_attr_ = []
         for tetra in mesh.cells_dict['tetra']:
             for node,neighbor in product(tetra,tetra):
                 if node != neighbor:
                     node_edges.append([node,neighbor])
-        edges = torch.from_numpy(np.array(node_edges)).to(self.device)
-        edges = edges.t()  # Transpose to [2, E]
+                    edges_attr_.append(mesh.points[neighbor]-mesh.points[node])
+        edges = torch.from_numpy(np.array(node_edges).T).to(self.device)
+        edges_attr = torch.from_numpy(np.array(edges_attr_)).to(self.device)
         pos = torch.from_numpy(mesh.points).to(self.device)
         wall_labels = self.classify_vertices(mesh, "Vitesse")  # Assuming classify_vertices returns 0 for wall, 1 for others
         wall_labels_tensor = torch.tensor(wall_labels, device=self.device).unsqueeze(1)  # Convert to tensor and add dimension
-        pos = torch.cat([pos, wall_labels_tensor], dim=1)  # Concatenate with pos
-        
-        data = self.get_speed_data(mesh)
-
-        # Initialize edge_attr with zeros if not present
-        edge_attr = torch.zeros((edges.size(1), 4), dtype=torch.float32, device=self.device)
-
-        return data, pos, edges, edge_attr
+        data = self.get_speed_data(mesh,t)
+        data = torch.cat([data, wall_labels_tensor], dim=1)  # Concatenate with data
+        return data, pos, edges, edges_attr
 
     @staticmethod
     def classify_vertices(mesh: meshio.Mesh, velocity_key: str = "Vitesse") -> np.ndarray:
@@ -140,7 +142,7 @@ class Dataset(BaseDataset):
 
 folder_path = '/content/drive/MyDrive/IDSC/4Students_AnXplore03/'
 folder_path = "/Users/ludoviclepic/Downloads/4Students_AnXplore03"
-
+folder_path = "/Users/ludoviclepic/Downloads/4Students_AnXplore03 copie"
 dataset = Dataset(folder_path)
 train_loader = DataLoader(
      dataset=dataset,
