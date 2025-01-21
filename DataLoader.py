@@ -34,7 +34,7 @@ class Dataset(BaseDataset):
         mesh = meshes[t]
         
         #Get data from mesh
-        data, pos, edges = self.mesh_to_graph_data(mesh,t)
+        data, pos, edges, edges_attr = self.mesh_to_graph_data(mesh,t)
         
         #Get speed for t+1 mesh
         next_t_mesh = meshes[t+1]
@@ -45,12 +45,14 @@ class Dataset(BaseDataset):
                               "x":data,
                               "pos":pos,
                               "edge_index":edges,
+                              "edge_attr":edges_attr,
                               "y":next_data[:,:-2],
                               }
         
         graph_data = Data(x=current_graph_data['x'],
                                 pos=current_graph_data['pos'],
                                 edge_index=current_graph_data['edge_index'],
+                                edge_attr=current_graph_data['edge_attr'],
                                 y=current_graph_data['y'])
 
         return graph_data
@@ -64,17 +66,20 @@ class Dataset(BaseDataset):
     
     def mesh_to_graph_data(self,mesh,t):
         node_edges = []
+        edges_attr_ = []
         for tetra in mesh.cells_dict['tetra']:
             for node,neighbor in product(tetra,tetra):
                 if node != neighbor:
                     node_edges.append([node,neighbor])
+                    edges_attr_.append(mesh.points[neighbor]-mesh.points[node])
         edges = torch.from_numpy(np.array(node_edges).T).to(self.device)
+        edges_attr = torch.from_numpy(np.array(edges_attr_)).to(self.device)
         pos = torch.from_numpy(mesh.points).to(self.device)
         wall_labels = self.classify_vertices(mesh, "Vitesse")  # Assuming classify_vertices returns 0 for wall, 1 for others
         wall_labels_tensor = torch.tensor(wall_labels, device=self.device).unsqueeze(1)  # Convert to tensor and add dimension
         data = self.get_speed_data(mesh,t)
         data = torch.cat([data, wall_labels_tensor], dim=1)  # Concatenate with data
-        return data, pos, edges
+        return data, pos, edges, edges_attr
 
     @staticmethod
     def classify_vertices(mesh: meshio.Mesh, velocity_key: str = "Vitesse") -> np.ndarray:
