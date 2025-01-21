@@ -1,6 +1,6 @@
 from tqdm import tqdm as tqdm
 import sys
-      
+
 class Epoch:
     def __init__(
         self,
@@ -19,10 +19,10 @@ class Epoch:
         self.parameters = parameters
         self.step = 0
         self._to_device()
-
+        self.stage_name = stage_name
         self.full_batch_graph = []
         self.starting_step = starting_step
-        self.stage_name = stage_name
+
     def _to_device(self):
         self.model.to(self.device)
         self.loss.to(self.device)
@@ -54,14 +54,14 @@ class Epoch:
             for graph_data in iterator:
                 for indx in range(1):
                     #TODO: check if we need this processing or not because it may already be the case
-                    # input_graph = Data(
-                    #     x=graph_data["x"][indx],
-                    #     pos=graph_data["pos"][indx],
-                    #     edge_index=graph_data["edge_index"][indx],
-                    #     edge_attr=graph_data.get("edge_attr", [None])[indx],
-                    #     y=graph_data["y"][indx],
-                    # ).to(self.device)
-                    input_graph = graph_data.to(self.device)
+                    input_graph = Data(
+                        x=graph_data["x"][indx],
+                        pos=graph_data["pos"][indx],
+                        edge_index=graph_data["edge_index"][indx],
+                        edge_attr=graph_data.get("edge_attr", [None])[indx],
+                        y=graph_data["y"][indx],
+                    ).to(self.device)
+                    # input_graph = graph_data.to(self.device)
 
                     self.full_batch_graph.append(input_graph)
 
@@ -135,7 +135,7 @@ class TrainEpoch(Epoch):
         loss = 0
         #TODO: check that batch_graph is either a list of graphs of a list of one list of graphs
         for graph in batch_graph:
-            
+
             node_type = graph['x'][:, self.model.node_type_index]
             network_output, target_delta_normalized = self.model(graph)
             loss += self.loss(
@@ -152,4 +152,3 @@ class TrainEpoch(Epoch):
 
         return loss
 
-  
