@@ -72,7 +72,7 @@ class L2Loss(_Loss):
     ):
         "Computes L2 loss on velocity, with respect to the noise"
         mask = (node_type == 1)
-        errors = (target_speed[mask]- network_output[mask]) ** 2
+        errors = (target_speed[mask] - network_output[mask]) ** 2
         return torch.mean(errors)
       
 class Epoch:
@@ -127,7 +127,7 @@ class Epoch:
         ) as iterator:
             for graph_data in iterator:
                 for indx in range(1):
-
+                    #TODO: check if we need this processing or not because it may already be the case
                     input_graph = Data(
                         x=graph_data["x"][indx],
                         pos=graph_data["pos"][indx],
