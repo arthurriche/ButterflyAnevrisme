@@ -72,10 +72,8 @@ class Dataset(BaseDataset):
         pos = torch.from_numpy(mesh.points).to(self.device)
         wall_labels = self.classify_vertices(mesh, "Vitesse")  # Assuming classify_vertices returns 0 for wall, 1 for others
         wall_labels_tensor = torch.tensor(wall_labels, device=self.device).unsqueeze(1)  # Convert to tensor and add dimension
-        pos = torch.cat([pos, wall_labels_tensor], dim=1)  # Concatenate with pos
-        
         data = self.get_speed_data(mesh,t)
-
+        data = torch.cat([data, wall_labels_tensor], dim=1)  # Concatenate with data
         return data, pos, edges
 
     @staticmethod
