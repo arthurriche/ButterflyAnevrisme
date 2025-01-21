@@ -32,10 +32,10 @@ class Dataset(BaseDataset):
         i,t = self.encode_id[id]
         meshes = self.xdmf_to_meshes(self.folder_path+self.files[i])
         mesh = meshes[t]
-        
+
         #Get data from mesh
         data, pos, edges, edges_attr = self.mesh_to_graph_data(mesh,t)
-        
+
         #Get speed for t+1 mesh
         next_t_mesh = meshes[t+1]
         next_data = self.get_speed_data(next_t_mesh,t+1)
@@ -48,22 +48,22 @@ class Dataset(BaseDataset):
                               "edge_attr":edges_attr,
                               "y":next_data[:,:-2],
                               }
-        
-        graph_data = Data(x=current_graph_data['x'],
-                                pos=current_graph_data['pos'],
-                                edge_index=current_graph_data['edge_index'],
-                                edge_attr=current_graph_data['edge_attr'],
-                                y=current_graph_data['y'])
 
-        return graph_data
-    
+        # graph_data = Data(x=current_graph_data['x'],
+        #                         pos=current_graph_data['pos'],
+        #                         edge_index=current_graph_data['edge_index'],
+        #                         edge_attr=current_graph_data['edge_attr'],
+        #                         y=current_graph_data['y'])
+
+        return current_graph_data
+
     def get_speed_data(self,mesh,t):
         time_array = np.full(mesh.point_data['Pression'][:,None].shape, fill_value=t*1e-2)
         data = torch.from_numpy(np.concatenate([mesh.point_data['Vitesse'],
                                                   mesh.point_data['Pression'][:,None],
                                                   time_array],axis=1)).to(self.device)
         return data
-    
+
     def mesh_to_graph_data(self,mesh,t):
         node_edges = []
         edges_attr_ = []
@@ -98,9 +98,9 @@ class Dataset(BaseDataset):
 
         velocities = np.array(mesh.point_data[velocity_key])  # Shape: (num_points, 3)
         speed_norm = np.linalg.norm(velocities, axis=1)  # Compute the norm of velocity for each vertex
-        labels = np.where(speed_norm == 0, 0, 1)  # 0 for wall, 1 for flow
+        labels = np.where(speed_norm <= 1e-8, 0, 1)  # 0 for wall, 1 for flow
         return labels
-        
+
     @staticmethod
     def xdmf_to_meshes(xdmf_file_path: str) -> List[meshio.Mesh]:
         """
