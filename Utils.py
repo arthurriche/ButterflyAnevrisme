@@ -1,3 +1,12 @@
+from loguru import logger
+import os
+import enum
+import numpy as np
+import torch
+import torch.nn as nn
+from torch.nn.modules.loss import _Loss
+from torch_geometric.data import Data
+
 class Meter(object):
     """Meters provide a way to keep track of important statistics in an online manner.
     This class is abstract, but provides a standard interface for all meters to follow.
@@ -165,20 +174,6 @@ class Normalizer(nn.Module):
         }
 
         return dict
-
-from loguru import logger
-import os
-import enum
-
-# class NodeType(enum.IntEnum):
-#     NORMAL = 0
-#     OBSTACLE = 1
-#     AIRFOIL = 2
-#     HANDLE = 3
-#     INFLOW = 4
-#     OUTFLOW = 5
-#     WALL_BOUNDARY = 6
-#     SIZE = 9
 
 class Simulator(nn.Module):
     def __init__(
