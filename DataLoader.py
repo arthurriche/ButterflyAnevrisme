@@ -26,12 +26,13 @@ class Dataset(BaseDataset):
         self.encode_id = {i*self.len_time+t:(i,t) for t,i in product(range(self.len_time),range(len(self.files)))}
         assert os.path.exists(self.folder_path)
         assert os.path.exists(os.path.join(self.folder_path, self.files[0]))
+
     def __len__(self):
       return self.number_files
 
     def __getitem__(self,id):
         i,t = self.encode_id[id]
-        meshes = self.xdmf_to_meshes(self.folder_path+self.files[i])
+        meshes = self.xdmf_to_meshes(os.path.join(self.folder_path, self.files[i]))
         mesh = meshes[t]
         
         #Get data from mesh
