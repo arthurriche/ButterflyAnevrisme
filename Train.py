@@ -48,6 +48,7 @@ train_epoch = TrainEpoch(
     model=simulator,
     loss=loss,
     optimizer=optimizer,
+    parameters={},
     device=device,
     verbose=True,
     starting_step=0,
