@@ -23,7 +23,7 @@ def build_mlp(
     """
     # Initialize the model with the first layer.
     layers = []
-    layers.append(nn.linear(in_size,hidden_size))
+    layers.append(nn.Linear(in_size,hidden_size))
     layers.append(nn.ReLU())
 
     if lay_norm:
