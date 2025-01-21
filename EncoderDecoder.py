@@ -7,6 +7,7 @@ from typing import List
 from torch.utils.data import Dataset as BaseDataset
 from torch_geometric.data import Data
 import torch
+import torch.nn as nn
 import numpy as np
 from torch.utils.data import DataLoader
 
