@@ -60,6 +60,7 @@ class Dataset(BaseDataset):
         return graph_data
     
     def get_speed_data(self,mesh,t):
+        # would like to rename this to get_features or get_fluid_features (more usual name for gnn for the feature data)
         time_array = np.full(mesh.point_data['Pression'][:,None].shape, fill_value=t*1e-2)
         data = torch.from_numpy(np.concatenate([mesh.point_data['Vitesse'],
                                                   mesh.point_data['Pression'][:,None],
