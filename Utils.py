@@ -98,15 +98,15 @@ from loguru import logger
 import os
 import enum
 
-class NodeType(enum.IntEnum):
-    NORMAL = 0
-    OBSTACLE = 1
-    AIRFOIL = 2
-    HANDLE = 3
-    INFLOW = 4
-    OUTFLOW = 5
-    WALL_BOUNDARY = 6
-    SIZE = 9
+# class NodeType(enum.IntEnum):
+#     NORMAL = 0
+#     OBSTACLE = 1
+#     AIRFOIL = 2
+#     HANDLE = 3
+#     INFLOW = 4
+#     OUTFLOW = 5
+#     WALL_BOUNDARY = 6
+#     SIZE = 9
 
 class Simulator(nn.Module):
     def __init__(
@@ -184,10 +184,10 @@ class Simulator(nn.Module):
         target_delta = target - pre_target
         target_delta_normalized = self._output_normalizer(target_delta, is_training)
 
-        one_hot_type = torch.nn.functional.one_hot(
-            torch.squeeze(node_type.long()), NodeType.SIZE
-        )
-
+        # one_hot_type = torch.nn.functional.one_hot(
+        #     torch.squeeze(node_type.long()), NodeType.SIZE
+        # )
+        one_hot_type = node_type.long()
         node_features_list = [features, one_hot_type]
         node_features_list.append(inputs.x[:, self.time_index].reshape(-1, 1))
 
