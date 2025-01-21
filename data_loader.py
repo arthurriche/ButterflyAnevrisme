@@ -9,12 +9,15 @@ from torch_geometric.data import Data
 import torch
 import numpy as np
 from torch_geometric.data import DataLoader  # Ensure using torch_geometric's DataLoader if needed
+import torch.multiprocessing as mp
+from functools import lru_cache
 
 class Dataset(BaseDataset):
     def __init__(
         self,
         folder_path: str,
     ):
+        super().__init__()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.folder_path = folder_path
@@ -23,71 +26,18 @@ class Dataset(BaseDataset):
         self.files.sort()
 
         self.number_files = len(self.files)
+        
+        # Pre-compute edge connections for tetrahedral mesh
+        self.edge_template = self._compute_edge_template()
+        
+        # Enable multiprocessing for data loading
+        mp.set_start_method('spawn', force=True)
 
     def __len__(self):
         return self.number_files
 
-    def __getitem__(self, id):
-        meshes = Dataset.xdmf_to_meshes(os.path.join(self.folder_path, self.files[id]))
-        # Modify to return a single Data object per item
-        graph_data = []
-        for t in range(len(meshes)):
-            if t == 0:
-                mesh = meshes[t]
-                
-                # Add constant graph structure
-                node_edges = []
-                for tetra in mesh.cells_dict['tetra']:
-                    for node, neighbor in product(tetra, tetra):
-                        if node != neighbor:
-                            node_edges.append([node, neighbor])
-                edges = torch.from_numpy(np.array(node_edges)).t().contiguous().to(self.device)
-                pos = torch.from_numpy(mesh.points).to(self.device)
-                wall_labels = Dataset.classify_vertices(mesh, "Vitesse")  # Assuming classify_vertices returns 0 for wall, 1 for others
-                wall_labels_tensor = torch.tensor(wall_labels, device=self.device).unsqueeze(1)  # Convert to tensor and add dimension
-                pos = torch.cat([pos, wall_labels_tensor], dim=1)  # Concatenate with pos
-            
-            data = torch.from_numpy(
-                np.concatenate([mesh.point_data['Vitesse'],
-                                mesh.point_data['Pression'][:, None]], axis=1)
-            ).to(self.device)
-            current_graph_data = {
-                "x": data,
-                "pos": pos,
-                "edge_index": edges,
-            }
-            
-            graph_data.append(Data(
-                x=current_graph_data['x'],
-                pos=current_graph_data['pos'],
-                edge_index=current_graph_data['edge_index']
-            ))
-
-        # If multiple Data objects are returned per __getitem__, adjust accordingly
-        # For simplicity, return the first Data object
-        return graph_data[0]  # Return a single Data object
-
     @staticmethod
-    def classify_vertices(mesh: meshio.Mesh, velocity_key: str = "Vitesse") -> np.ndarray:
-      """
-      Classify each vertex of the mesh as being on the wall or in the flow.
-
-      Parameters:
-          mesh: The mesh object containing point data.
-          velocity_key: The key for the velocity data in the mesh point_data.
-
-      Returns:
-          A numpy array of labels (0 for wall, 1 for flow).
-      """
-      if velocity_key not in mesh.point_data:
-          raise ValueError(f"Velocity data key '{velocity_key}' not found in mesh point_data.")
-
-      velocities = np.array(mesh.point_data[velocity_key])  # Shape: (num_points, 3)
-      speed_norm = np.linalg.norm(velocities, axis=1)  # Compute the norm of velocity for each vertex
-      labels = np.where(speed_norm == 0, 0, 1)  # 0 for wall, 1 for flow
-      return labels
-        
-    @staticmethod
+    @lru_cache(maxsize=32)  # Cache frequently accessed meshes
     def xdmf_to_meshes(xdmf_file_path: str) -> List[meshio.Mesh]:
       """
       Opens an XDMF archive file, and extract a data mesh object for every timestep.
@@ -110,6 +60,100 @@ class Dataset(BaseDataset):
           meshes.append(mesh)
       print(f"Loaded {len(meshes)} timesteps from {xdmf_file_path.split('/')[-1]}\n")
       return meshes
+
+    def _compute_edge_template(self):
+        # Pre-compute edge connections for a single tetrahedron
+        tetra = np.array([[0, 1, 2, 3]])
+        node_edges = []
+        for node, neighbor in product(tetra[0], tetra[0]):
+            if node != neighbor:
+                node_edges.append([node, neighbor])
+        return torch.tensor(node_edges, device=self.device)
+
+    def _compute_mesh_edges(self, mesh):
+        """
+        Compute edges for the entire mesh efficiently.
+        
+        Args:
+            mesh: meshio.Mesh object containing the tetrahedral mesh
+            
+        Returns:
+            torch.Tensor: Edge indices tensor of shape [2, num_edges]
+        """
+        # Get tetrahedral elements
+        tetra = mesh.cells_dict['tetra']
+        num_tetra = len(tetra)
+        
+        # Create edges for each tetrahedron
+        edges = []
+        for tet in tetra:
+            # Create edges between all vertices in the tetrahedron
+            for i in range(4):
+                for j in range(4):
+                    if i != j:
+                        edges.append([tet[i], tet[j]])
+        
+        # Convert to tensor and remove duplicates
+        edges = torch.tensor(edges, device=self.device)
+        edges = torch.unique(edges, dim=0)
+        
+        # Convert to expected format [2, num_edges]
+        return edges.t().contiguous()
+
+    def __getitem__(self, id):
+        meshes = self.xdmf_to_meshes(os.path.join(self.folder_path, self.files[id]))
+        
+        # Process just the first timestep for now
+        mesh = meshes[0]
+        edges = self._compute_mesh_edges(mesh)
+        pos = torch.from_numpy(mesh.points).float().to(self.device)
+        
+        # Ensure data is in float32 format
+        data = torch.from_numpy(np.concatenate([
+            mesh.point_data['Vitesse'],
+            mesh.point_data['Pression'][:, None]
+        ], axis=1)).float().to(self.device)
+
+        # Create and return a single Data object
+        graph_data = Data(
+            x=data,
+            pos=pos,
+            edge_index=edges,
+            num_nodes=data.size(0)  # Add explicit num_nodes
+        )
+        
+        # Verify data is properly formatted
+        assert hasattr(graph_data, 'x'), "Missing node features (x)"
+        assert hasattr(graph_data, 'edge_index'), "Missing edge indices"
+        
+        # Return single object, not in a tuple
+        return graph_data
+
+    def _classify_vertices_vectorized(self, mesh):
+        velocities = mesh.point_data['Vitesse']
+        return torch.from_numpy(
+            (np.sum(velocities**2, axis=1) > 1e-10).astype(np.float32)
+        ).to(self.device)
+
+    @staticmethod
+    def classify_vertices(mesh: meshio.Mesh, velocity_key: str = "Vitesse") -> np.ndarray:
+      """
+      Classify each vertex of the mesh as being on the wall or in the flow.
+
+      Parameters:
+          mesh: The mesh object containing point data.
+          velocity_key: The key for the velocity data in the mesh point_data.
+
+      Returns:
+          A numpy array of labels (0 for wall, 1 for flow).
+      """
+      if velocity_key not in mesh.point_data:
+          raise ValueError(f"Velocity data key '{velocity_key}' not found in mesh point_data.")
+
+      velocities = np.array(mesh.point_data[velocity_key])  # Shape: (num_points, 3)
+      speed_norm = np.linalg.norm(velocities, axis=1)  # Compute the norm of velocity for each vertex
+      labels = np.where(speed_norm == 0, 0, 1)  # 0 for wall, 1 for flow
+      return labels
 
 
 folder_path = "/Users/ludoviclepic/Downloads/4Students_AnXplore03/"

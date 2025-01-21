@@ -55,6 +55,8 @@ class EdgeBlock(nn.Module):
     def __init__(self, model_fn=None):
         super(EdgeBlock, self).__init__()
         self._model_fn = model_fn
+        self.edge_attr_cache = None
+        self.edge_size = 4
 
     def forward(self, graph: Data) -> Data:
         """Forward pass of the EdgeBlock.
@@ -65,20 +67,22 @@ class EdgeBlock(nn.Module):
         Returns:
             Data: An updated graph with new edge attributes.
         """
-        # Get sender and receiver node features
-        sender_features = graph.x[graph.edge_index[0]]
-        receiver_features = graph.x[graph.edge_index[1]]
+        # Pre-allocate edge attributes if needed
+        if self.edge_attr_cache is None or self.edge_attr_cache.size(0) != graph.edge_index.size(1):
+            self.edge_attr_cache = torch.zeros(
+                (graph.edge_index.size(1), self.edge_size),
+                device=graph.x.device
+            )
+
+        # Use index_select instead of direct indexing for better performance
+        sender_features = torch.index_select(graph.x, 0, graph.edge_index[0])
+        receiver_features = torch.index_select(graph.x, 0, graph.edge_index[1])
         
-        # Ensure edge_attr has correct dimensions
-        if graph.edge_attr.size(1) != 4:
-            num_edges = graph.edge_index.size(1)
-            graph.edge_attr = torch.zeros((num_edges, 4), device=graph.x.device)
-        
-        # Concatenate features
+        # Optimize concatenation using pre-allocated tensor
         edge_inputs = torch.cat([
-            graph.edge_attr,  # [num_edges, 4]
-            sender_features,  # [num_edges, hidden_size]
-            receiver_features  # [num_edges, hidden_size]
+            graph.edge_attr if graph.edge_attr.size(1) == self.edge_size else self.edge_attr_cache,
+            sender_features,
+            receiver_features
         ], dim=1)
         
         edge_attr_ = self._model_fn(edge_inputs)
@@ -101,6 +105,8 @@ class NodeBlock(nn.Module):
     def __init__(self, model_fn=None):
         super(NodeBlock, self).__init__()
         self._model_fn = model_fn
+        self.cached_index = None
+        self.cached_size = None
 
     def forward(self, graph: Data) -> Data:
         """Forward pass of the NodeBlock.
@@ -111,12 +117,17 @@ class NodeBlock(nn.Module):
         Returns:
             Data: An updated graph with new node attributes.
         """
-        edge_attr = graph.edge_attr
-        receivers_index = graph.edge_index[1]
+        # Cache scatter indices for better performance
+        if self.cached_index is None or self.cached_size != graph.num_nodes:
+            self.cached_index = graph.edge_index[1]
+            self.cached_size = graph.num_nodes
+
+        # Use scatter_add with cached indices
         agrr_edge_features = scatter_add(
-            edge_attr, receivers_index, dim=0, dim_size=graph.num_nodes
+            graph.edge_attr, self.cached_index, dim=0, dim_size=self.cached_size
         )
 
+        # Pre-allocate tensor for concatenation
         node_inputs = torch.cat(
             [graph.x, agrr_edge_features], dim=1
         )

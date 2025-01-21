@@ -52,11 +52,11 @@ def convert_to_float(data):
     Returns:
         Data: L'objet Data avec toutes les données converties en float.
     """
-    print("Converting data to float...")
+    #print("Converting data to float...")
     for key, value in data:
         if isinstance(value, torch.Tensor) and value.dtype == torch.float64:
             data[key] = value.to(torch.float32)
-    print("Data converted to float.")
+    #print("Data converted to float.")
     return data
 
 ##################################
@@ -101,18 +101,18 @@ class Encoder(nn.Module):
         Returns:
             - Data: A graph object with encoded node and edge attributes.
         """
-        print("Starting encoder forward pass...")
+        #print("Starting encoder forward pass...")
         graph = convert_to_float(graph)
         node_attr = graph.x
-        print("Node attributes shape:", node_attr.shape)
+        #print("Node attributes shape:", node_attr.shape)
         node_latents = self.node_encoder(node_attr)
-        print("Node latents shape:", node_latents.shape)
+        #print("Node latents shape:", node_latents.shape)
 
         # Initialize edge_attr with 4 features if it doesn't exist or has wrong dimensions
         if graph.edge_attr is None or graph.edge_attr.size(1) != 4:
             num_edges = graph.edge_index.size(1)
             graph.edge_attr = torch.zeros((num_edges, 4), dtype=torch.float32, device=node_latents.device)
-        print("Edge attributes shape:", graph.edge_attr.shape)
+        #print("Edge attributes shape:", graph.edge_attr.shape)
 
         return Data(
             x=node_latents,
@@ -155,9 +155,9 @@ class Decoder(nn.Module):
             Data: A graph object where `x` has been decoded from the latent space back into the original graph space.
                   The structure of the graph (edges) remains unchanged.
         """
-        print("Starting decoder forward pass...")
+        #print("Starting decoder forward pass...")
         decoded_x = self.decode_module(graph.x)
-        print("Decoded node attributes shape:", decoded_x.shape)
+        #print("Decoded node attributes shape:", decoded_x.shape)
         return Data(
             x=decoded_x,
             edge_attr=graph.edge_attr,
