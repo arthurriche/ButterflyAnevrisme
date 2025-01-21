@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from torch.utils.data import DataLoader
-
+from MessagePassing import GraphNetBlock
 
 def build_mlp(
     in_size: int,
@@ -175,3 +175,68 @@ class Decoder(nn.Module):
             pos=graph.pos,
         )
   ####################################"
+
+
+class EncodeProcessDecode(nn.Module):
+    """An Encode-Process-Decode model for graph neural networks.
+
+    This model architecture is designed for processing graph-structured data. It consists of three main components:
+    an encoder, a processor, and a decoder. The encoder maps input graph features to a latent space, the processor
+    performs message passing and updates node representations, and the decoder generates the final output from the
+    processed graph.
+
+    Attributes:
+        encoder (Encoder): The encoder component that transforms input graph features to a latent representation.
+        decoder (Decoder): The decoder component that generates output from the processed graph.
+        processer_list (nn.ModuleList): A list of GraphNetBlock modules for message passing and node updates.
+
+    Parameters:
+        message_passing_num (int): The number of message passing (GraphNetBlock) layers.
+        node_input_size (int): The size of the input node features.
+        edge_input_size (int): The size of the input edge features.
+        output_size (int): The size of the output features.
+        hidden_size (int, optional): The size of the hidden layers. Defaults to 128.
+    """
+
+    def __init__(
+        self,
+        message_passing_num,
+        node_input_size,
+        edge_input_size,
+        output_size,
+        hidden_size=128,
+    ):
+
+        super(EncodeProcessDecode, self).__init__()
+        self.encoder = Encoder(
+                               edge_input_size=edge_input_size,
+                               node_input_size=node_input_size,
+                               hidden_size=hidden_size
+                               )
+
+        self.decoder = Decoder(hidden_size=hidden_size, output_size=output_size)
+
+        self.processer_list = nn.ModuleList(
+                [
+                    GraphNetBlock(hidden_size=hidden_size)
+                    for _ in range(message_passing_num)
+                ]
+        )
+
+    def forward(self, graph):
+        """Forward pass of the Encode-Process-Decode model.
+
+        Args:
+            graph: The input graph data. The exact type and format depend on the implementation of the Encoder and
+                   GraphNetBlock modules.
+
+        Returns:
+            The output of the model after encoding, processing, and decoding the input graph.
+        """
+        graph = self.encoder(graph)
+
+        for processer in self.processer_list:
+            graph = processer(graph)
+
+        return self.decoder(graph)
+
