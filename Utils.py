@@ -6,7 +6,10 @@ import torch
 import torch.nn as nn
 from torch.nn.modules.loss import _Loss
 from torch_geometric.data import Data
-
+import meshio
+import shutil
+import os.path as osp
+from typing import List
 
 
 class Meter(object):
@@ -64,7 +67,7 @@ class AverageValueMeter(Meter):
         self.mean_old = 0.0
         self.m_s = 0.0
         self.std = np.nan
-      
+
 class L2Loss(_Loss):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -249,19 +252,19 @@ class Simulator(nn.Module):
 
         target = inputs.y
         pre_target = self._get_pre_target(inputs)
-
+        
         target_delta = target - pre_target
         target_delta_normalized = self._output_normalizer(target_delta, is_training)
 
         # one_hot_type = torch.nn.functional.one_hot(
         #     torch.squeeze(node_type.long()), NodeType.SIZE
         # )
-        one_hot_type = node_type.long()
-        node_features_list = [features, one_hot_type]
-        node_features_list.append(inputs.x[:, self.time_index].reshape(-1, 1))
+        # one_hot_type = node_type.long()
+        # node_features_list = [features, one_hot_type]
+        # node_features_list.append(inputs.x[:, self.time_index].reshape(-1, 1))
 
-        node_features = torch.cat(node_features_list, dim=1)
-
+        # node_features = torch.cat(node_features_list, dim=1)
+        node_features = inputs.x
         node_features_normalized = self._node_normalizer(node_features, is_training)
         edge_features_normalized = self._edge_normalizer(
                     inputs.edge_attr, is_training
@@ -342,6 +345,3 @@ class Simulator(nn.Module):
         }
 
         torch.save(to_save, savedir)
-
-
-
