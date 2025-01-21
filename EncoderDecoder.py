@@ -11,6 +11,48 @@ import torch.nn as nn
 import numpy as np
 from torch.utils.data import DataLoader
 
+
+def build_mlp(
+    in_size: int,
+    hidden_size: int,
+    out_size: int,
+    nb_of_layers: int = 4,
+    lay_norm: bool = True,
+) -> nn.Module:
+    """
+    Builds a Multilayer Perceptron (MLP) using PyTorch.
+
+    Parameters:
+        - in_size (int): The size of the input layer.
+        - hidden_size (int): The size of the hidden layers.
+        - out_size (int): The size of the output layer.
+        - nb_of_layers (int, optional): The number of layers in the MLP, including the input and output layers. Defaults to 4.
+
+    Returns:
+        - nn.Module: The constructed MLP model.
+    """
+    # Initialize the model with the first layer.
+    layers = []
+    layers.append(nn.Linear(in_size,hidden_size))
+    layers.append(nn.ReLU())
+
+    if lay_norm:
+      layers.append(nn.LayerNorm(hidden_size))
+
+    for _ in range(nb_of_layers - 2):
+      layers.append(nn.Linear(hidden_size,hidden_size))
+      layers.append(nn.ReLU())
+
+      if lay_norm:
+        layers.append(nn.LayerNorm(hidden_size))
+
+    # Add the output layer
+    layers.append(nn.Linear(hidden_size,out_size))
+    # Construct the model using the specified layers.
+    module = nn.Sequential(*layers)
+
+    return module
+
 def convert_to_float(data):
     """Convertit toutes les données d'un objet Data en float.
 
