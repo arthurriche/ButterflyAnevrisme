@@ -13,7 +13,7 @@ train_loader = DataLoader(
 )
 
 model = EncodeProcessDecode(
-    node_input_size=5,
+    node_input_size=6,
     edge_input_size=0,
     message_passing_num=15,
     hidden_size=128,
@@ -21,19 +21,19 @@ model = EncodeProcessDecode(
 ) #
 loss = L2Loss() #
 simulator = Simulator(
-    node_input_size=5,
+    node_input_size=6,
     edge_input_size=0,
     output_size=3,
     feature_index_start=0,
-    feature_index_end=3,
+    feature_index_end=4,
     output_index_start=0,
-    output_index_end=3,
-    node_type_index=3,
+    output_index_end=4,
+    node_type_index=5,
     batch_size=1,
     model=model,
     device=device,
     model_dir="checkpoint/simulator.pth",
-    time_index=3
+    time_index=4
 ) #
 optimizer = torch.optim.Adam(simulator.parameters(), lr=0.0001)
 
