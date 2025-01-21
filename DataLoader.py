@@ -24,8 +24,6 @@ class Dataset(BaseDataset):
         self.len_time = 79
         self.number_files = len(self.files) * self.len_time
         self.encode_id = {i+t:(i,t) for t,i in product(range(self.len_time),range(len(self.files)))}
-        self.delta_speed = False
-
 
     def __len__(self):
       return self.number_files
@@ -33,25 +31,21 @@ class Dataset(BaseDataset):
     def __getitem__(self,id):
         i,t = self.encode_id[id]
         meshes = self.xdmf_to_meshes(self.folder_path+self.files[i])
-        
         mesh = meshes[t]
         
         #Get data from mesh
-        data, pos, edges = self.mesh_to_graph_data(mesh)
+        data, pos, edges = self.mesh_to_graph_data(mesh,t)
         
         #Get speed for t+1 mesh
         next_t_mesh = meshes[t+1]
-        next_data = self.get_speed_data(next_t_mesh)
+        next_data = self.get_speed_data(next_t_mesh,t+1)
 
-
-        if self.delta_speed:
-            next_data = next_data - data
         #Structure the information
         current_graph_data = {
                               "x":data,
                               "pos":pos,
                               "edge_index":edges,
-                              "y":next_data[:,:-1],
+                              "y":next_data[:,:-2],
                               }
         
         graph_data = Data(x=current_graph_data['x'],
@@ -61,24 +55,26 @@ class Dataset(BaseDataset):
 
         return graph_data
     
-    def get_speed_data(self,mesh):
+    def get_speed_data(self,mesh,t):
+        time_array = np.full(mesh.point_data['Pression'][:,None].shape, fill_value=t*1e-2)
         data = torch.from_numpy(np.concatenate([mesh.point_data['Vitesse'],
-                                              mesh.point_data['Pression'][:,None]],axis=1)).to(self.device)
+                                                  mesh.point_data['Pression'][:,None],
+                                                  time_array],axis=1)).to(self.device)
         return data
     
-    def mesh_to_graph_data(self,mesh):
+    def mesh_to_graph_data(self,mesh,t):
         node_edges = []
         for tetra in mesh.cells_dict['tetra']:
             for node,neighbor in product(tetra,tetra):
                 if node != neighbor:
                     node_edges.append([node,neighbor])
-        edges = torch.from_numpy(np.array(node_edges)).to(self.device)
+        edges = torch.from_numpy(np.array(node_edges).T).to(self.device)
         pos = torch.from_numpy(mesh.points).to(self.device)
         wall_labels = self.classify_vertices(mesh, "Vitesse")  # Assuming classify_vertices returns 0 for wall, 1 for others
         wall_labels_tensor = torch.tensor(wall_labels, device=self.device).unsqueeze(1)  # Convert to tensor and add dimension
         pos = torch.cat([pos, wall_labels_tensor], dim=1)  # Concatenate with pos
         
-        data = self.get_speed_data(mesh)
+        data = self.get_speed_data(mesh,t)
 
         return data, pos, edges
 
