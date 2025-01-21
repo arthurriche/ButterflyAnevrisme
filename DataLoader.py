@@ -9,7 +9,7 @@ from torch_geometric.data import Data
 import torch
 import numpy as np
 from torch.utils.data import DataLoader
-
+import gc
 class Dataset(BaseDataset):
     def __init__(
         self,
@@ -30,16 +30,17 @@ class Dataset(BaseDataset):
 
     def __getitem__(self,id):
         i,t = self.encode_id[id]
-        meshes = self.xdmf_to_meshes(self.folder_path+self.files[i])
-        mesh = meshes[t]
+        meshes = self.xdmf_to_meshes(self.folder_path+self.files[i],t)
+        mesh = meshes[0]
 
         #Get data from mesh
         data, pos, edges, edges_attr = self.mesh_to_graph_data(mesh,t)
 
         #Get speed for t+1 mesh
-        next_t_mesh = meshes[t+1]
+        next_t_mesh = meshes[1]
         next_data = self.get_speed_data(next_t_mesh,t+1)
-
+        del meshes
+        
         #Structure the information
         current_graph_data = {
                               "x":data,
@@ -102,7 +103,7 @@ class Dataset(BaseDataset):
         return labels
 
     @staticmethod
-    def xdmf_to_meshes(xdmf_file_path: str) -> List[meshio.Mesh]:
+    def xdmf_to_meshes(xdmf_file_path: str, t) -> List[meshio.Mesh]:
         """
         Opens an XDMF archive file, and extract a data mesh object for every timestep.
 
@@ -115,7 +116,7 @@ class Dataset(BaseDataset):
         meshes = []
 
         # Extracting the meshes from the archive
-        for i in range(reader.num_steps):
+        for i in [t,t+1]:
             # Depending on meshio version, the function read_data may return 3 or 4 values.
             try:
                 time, point_data, cell_data, _ = reader.read_data(i)
