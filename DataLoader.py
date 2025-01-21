@@ -51,7 +51,7 @@ class Dataset(BaseDataset):
                               "x":data,
                               "pos":pos,
                               "edge_index":edges,
-                              "y":next_data,
+                              "y":next_data[:,:-1],
                               }
         
         graph_data = Data(x=current_graph_data['x'],
