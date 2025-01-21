@@ -22,7 +22,7 @@ class Epoch:
 
         self.full_batch_graph = []
         self.starting_step = starting_step
-
+        self.stage_name = stage_name
     def _to_device(self):
         self.model.to(self.device)
         self.loss.to(self.device)
