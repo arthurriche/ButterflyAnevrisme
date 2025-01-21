@@ -41,7 +41,7 @@ class Dataset(BaseDataset):
         mesh = meshes[t]
         
         #Get data from mesh
-        data, pos, edges = self.mesh_to_graph_data(mesh)
+        data, pos, edges, edge_attr = self.mesh_to_graph_data(mesh)
         
         #Get speed for t+1 mesh
         next_t_mesh = meshes[t+1]
@@ -55,12 +55,14 @@ class Dataset(BaseDataset):
                               "x":data,
                               "pos":pos,
                               "edge_index":edges,
+                              "edge_attr": edge_attr,
                               "y":next_data,
                               }
         
         graph_data = Data(x=current_graph_data['x'],
                                 pos=current_graph_data['pos'],
                                 edge_index=current_graph_data['edge_index'],
+                                edge_attr=current_graph_data['edge_attr'],
                                 y=current_graph_data['y'])
 
         return graph_data
@@ -77,6 +79,7 @@ class Dataset(BaseDataset):
                 if node != neighbor:
                     node_edges.append([node,neighbor])
         edges = torch.from_numpy(np.array(node_edges)).to(self.device)
+        edges = edges.t()  # Transpose to [2, E]
         pos = torch.from_numpy(mesh.points).to(self.device)
         wall_labels = self.classify_vertices(mesh, "Vitesse")  # Assuming classify_vertices returns 0 for wall, 1 for others
         wall_labels_tensor = torch.tensor(wall_labels, device=self.device).unsqueeze(1)  # Convert to tensor and add dimension
@@ -84,7 +87,10 @@ class Dataset(BaseDataset):
         
         data = self.get_speed_data(mesh)
 
-        return data, pos, edges
+        # Initialize edge_attr with zeros if not present
+        edge_attr = torch.zeros((edges.size(1), 4), dtype=torch.float32, device=self.device)
+
+        return data, pos, edges, edge_attr
 
     @staticmethod
     def classify_vertices(mesh: meshio.Mesh, velocity_key: str = "Vitesse") -> np.ndarray:

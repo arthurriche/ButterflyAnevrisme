@@ -164,7 +164,7 @@ def single_gpu_train():
                 memory_queue.wait_if_needed()
                 
                 # Fix: Ensure data is correctly unpacked
-                initial_graph = data.to(device)
+                initial_graph = data[0].to(device)
                 
                 # Debug print to check data structure
                 print(f"Data structure check - x: {initial_graph.x.shape}, edge_index: {initial_graph.edge_index.shape}")
