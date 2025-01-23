@@ -1,0 +1,13 @@
+torch --index-url https://download.pytorch.org/whl/cpu
+torch-scatter -f https://data.pyg.org/whl/torch-2.5.1+cpu.html
+torch-sparse -f https://data.pyg.org/whl/torch-2.5.1+cpu.html
+torch-cluster -f https://data.pyg.org/whl/torch-2.5.1+cpu.html
+torch-spline-conv -f https://data.pyg.org/whl/torch-2.5.1+cpu.html
+torch-geometric
+tensorboard==2.17.1
+loguru
+autoflake
+pytest
+meshio
+h5py
+numpy

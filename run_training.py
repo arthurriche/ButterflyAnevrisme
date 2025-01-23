@@ -1,10 +1,11 @@
+## DEPRECATED 
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 from DataLoader import Dataset
 from EncoderDecoder import EncodeProcessDecode
 from Utils import L2Loss, Simulator
-from Epoch import TrainEpoch
+from training.training import TrainEpoch
 
 writer = SummaryWriter("tensorboard")
 
@@ -41,7 +42,7 @@ simulator = Simulator(
     device=device,
     model_dir="checkpoint/simulator.pth",
     time_index=4
-) #
+) 
 optimizer = torch.optim.Adam(simulator.parameters(), lr=0.0001)
 
 train_epoch = TrainEpoch(

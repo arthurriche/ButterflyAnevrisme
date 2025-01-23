@@ -1,2 +1,8 @@
 data
 .env
+venv
+4Students_test_case_cropped
+tensorboard
+trained_model
+model
+__pycache__

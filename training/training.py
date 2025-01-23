@@ -1,11 +1,148 @@
-from loguru import logger
 import os
-import enum
+from torch_geometric.data import Dataset as BaseDataset
+from torch_geometric.data import Data
 import numpy as np
+import gc
+from torch_scatter import scatter_add
+from loguru import logger
 import torch
 import torch.nn as nn
 from torch.nn.modules.loss import _Loss
 from torch_geometric.data import Data
+from tqdm import tqdm
+
+class Epoch:
+    def __init__(
+        self,
+        model,
+        loss,
+        stage_name,
+        parameters,
+        device="cpu",
+        verbose=True,
+        starting_step=0,
+    ):
+        self.model = model
+        self.loss = loss
+        self.verbose = verbose
+        self.device = device
+        self.parameters = parameters
+        self.step = 0
+        self._to_device()
+        self.stage_name = stage_name
+        self.starting_step = starting_step
+        print("Epoch", self.device)
+
+    def _to_device(self):
+        self.model.to(self.device)
+        self.loss.to(self.device)
+
+    def _format_logs(self, logs):
+        str_logs = ["{} - {:.4}".format(k, v) for k, v in logs.items()]
+        s = ", ".join(str_logs)
+        return s
+
+    def batch_update(self, x, y):
+        raise NotImplementedError
+
+    def on_epoch_start(self):
+        pass
+
+    def run(self, dataloader, writer=None, model_save_dir="checkpoint/simulator.pth"):
+        self.on_epoch_start()
+        logs = {}
+        loss_meter = AverageValueMeter()
+
+        with tqdm(dataloader, desc=self.stage_name, file=sys.stdout, disable=not (self.verbose)) as iterator:
+            for graph_data in iterator:
+                batch_loss = self.batch_update([graph_data], writer)
+                batch_loss_value = batch_loss.detach().cpu().item()  # Convert to CPU float
+                loss_meter.add(batch_loss_value)
+                del graph_data, batch_loss_value  # Explicitly delete variables
+                torch.cuda.empty_cache()
+                gc.collect()  # Force garbage collection
+
+        return loss_meter.mean
+
+
+
+class TrainEpoch(Epoch):
+    def __init__(
+        self,
+        model,
+        loss,
+        parameters,
+        optimizer,
+        device="cpu",
+        verbose=True,
+        starting_step=0,
+        use_sub_graph=False,
+        accumulation_steps=4  # Add accumulation steps for gradient accumulation
+    ):
+        super().__init__(
+            model=model,
+            loss=loss,
+            stage_name="train",
+            parameters=parameters,
+            device=device,
+            verbose=verbose,
+            starting_step=starting_step,
+        )
+        self.optimizer = optimizer
+        self.use_sub_graph = use_sub_graph
+        self.accumulation_steps = accumulation_steps
+
+    def on_epoch_start(self):
+        self.model.train()
+
+
+    def batch_update(self, batch_graph, writer):
+
+        self.optimizer.zero_grad()
+        loss = 0
+        #TODO: check that batch_graph is either a list of graphs of a list of one list of graphs
+        for i, graph in enumerate(batch_graph):
+
+            node_type = graph['x'][:, self.model.node_type_index]
+            network_output, target_delta_normalized = self.model(graph)
+
+
+            loss += self.loss(
+                target_delta_normalized,
+                network_output,
+                node_type,
+            )
+
+            if (i + 1) % self.accumulation_steps == 0:
+                loss /= self.accumulation_steps
+
+                loss.backward()
+
+                max_norm = 10.0
+                nn.utils.clip_grad_norm_(self.model.parameters(), max_norm)
+
+                self.optimizer.step()
+
+                self.optimizer.zero_grad()
+
+                loss = 0
+
+        if loss > 0:
+            loss /= self.accumulation_steps
+
+            loss.backward()
+
+            max_norm = 10.0
+            nn.utils.clip_grad_norm_(self.model.parameters(), max_norm)
+
+            self.optimizer.step()
+
+        del batch_graph, network_output, target_delta_normalized, node_type  # Explicitly delete variables
+        torch.cuda.empty_cache()
+        gc.collect()  # Force garbage collection
+
+        return loss
+
 
 
 
@@ -64,7 +201,7 @@ class AverageValueMeter(Meter):
         self.mean_old = 0.0
         self.m_s = 0.0
         self.std = np.nan
-      
+
 class L2Loss(_Loss):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -78,7 +215,10 @@ class L2Loss(_Loss):
     ):
         "Computes L2 loss on velocity, with respect to the noise"
         mask = (node_type == 1)
-        errors = (target_speed[mask] - network_output[mask]) ** 2
+        target_speed_tensor = target_speed.to(torch.float32)
+        network_output_tensor = network_output.x.to(torch.float32)
+
+        errors = (target_speed_tensor[mask] - network_output_tensor[mask]) ** 2
         return torch.mean(errors)
 
 class Normalizer(nn.Module):
@@ -99,6 +239,7 @@ class Normalizer(nn.Module):
             name (str): Name of the Normalizer.
             device (str): Device to run the Normalizer on.
         """
+        #print("Normalizer", device)
         super(Normalizer, self).__init__()
         self.name = name
         self._max_accumulations = max_accumulations
@@ -177,6 +318,8 @@ class Normalizer(nn.Module):
 
         return dict
 
+import time
+
 class Simulator(nn.Module):
     def __init__(
         self,
@@ -227,6 +370,7 @@ class Simulator(nn.Module):
 
         self.model_dir = model_dir
         self.model = model.to(device)
+        #start_time = time.time()
         self._output_normalizer = Normalizer(
             size=output_size, name="output_normalizer", device=device
         )
@@ -236,6 +380,7 @@ class Simulator(nn.Module):
         self._edge_normalizer = Normalizer(
             size=edge_input_size, name="edge_normalizer", device=device
         )
+        #print("Normalizer time: %f" % (time.time() - start_time))
 
         self.device = device
         self.batch_size = batch_size
@@ -253,27 +398,19 @@ class Simulator(nn.Module):
         target_delta = target - pre_target
         target_delta_normalized = self._output_normalizer(target_delta, is_training)
 
-        # one_hot_type = torch.nn.functional.one_hot(
-        #     torch.squeeze(node_type.long()), NodeType.SIZE
-        # )
-        one_hot_type = node_type.long()
-        node_features_list = [features, one_hot_type]
-        node_features_list.append(inputs.x[:, self.time_index].reshape(-1, 1))
-
-        node_features = torch.cat(node_features_list, dim=1)
-
+        node_features = inputs.x
         node_features_normalized = self._node_normalizer(node_features, is_training)
         edge_features_normalized = self._edge_normalizer(
-                    inputs.edge_attr, is_training
-        )
+                    inputs.edge_attr, is_training)
 
         graph = Data(
                 x=node_features_normalized,
                 pos=inputs.pos,
                 edge_attr=edge_features_normalized,
                 edge_index=inputs.edge_index,
-            )
-
+            ).to(device=self.device, non_blocking=True)
+        # Free up memory
+        torch.cuda.empty_cache()
         return graph, target_delta_normalized
 
     def _build_outputs(
@@ -284,17 +421,30 @@ class Simulator(nn.Module):
         return pre_target + update
 
     def forward(self, inputs: Data):
+        #print("torch.cuda.max_memory_reserved: %fGB"%(torch.cuda.max_memory_reserved(0)/1024/1024/1024))
+        #print('device',torch.cuda.current_device())
         if self.training:
+            #start_time = time.time()
             graph, target_delta_normalized = self._build_input_graph(
                 inputs=inputs, is_training=True
             )
+            #print("Graph creation", time.time()-start_time)
+            #start_time = time.time()
             network_output = self.model(graph)
+            #print("Network time", time.time()-start_time)
+            #print("torch.cuda.memory_allocated: %fGB"%(torch.cuda.memory_allocated(0)/1024/1024/1024))
+            #print("torch.cuda.memory_reserved: %fGB"%(torch.cuda.memory_reserved(0)/1024/1024/1024))
+            #print("torch.cuda.max_memory_reserved: %fGB"%(torch.cuda.max_memory_reserved(0)/1024/1024/1024))
+            #print('device',torch.cuda.current_device())
             return network_output, target_delta_normalized
         else:
             graph, target_delta_normalized = self._build_input_graph(
                 inputs=inputs, is_training=False
             )
             network_output = self.model(graph)
+            #print("torch.cuda.memory_allocated: %fGB"%(torch.cuda.memory_allocated(0)/1024/1024/1024))
+            #print("torch.cuda.memory_reserved: %fGB"%(torch.cuda.memory_reserved(0)/1024/1024/1024))
+            #print("torch.cuda.max_memory_reserved: %fGB"%(torch.cuda.max_memory_reserved(0)/1024/1024/1024))
             return (
                 network_output,
                 target_delta_normalized,
@@ -342,6 +492,3 @@ class Simulator(nn.Module):
         }
 
         torch.save(to_save, savedir)
-
-
-
