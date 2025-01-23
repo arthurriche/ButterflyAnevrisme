@@ -1,8 +1,9 @@
 data
 .env
 venv
-4Students_test_case_cropped
+4Students_*
 tensorboard
 trained_model
 model
 __pycache__
+dummy_outputs

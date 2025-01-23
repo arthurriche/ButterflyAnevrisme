@@ -60,7 +60,6 @@ class Dataset(BaseDataset):
         data = torch.from_numpy(np.concatenate([mesh.point_data['Vitesse'],
                                                   mesh.point_data['Pression'][:,None],
                                                   time_array],axis=1)).float()
-
         return data.to(self.device)
 
     # def mesh_to_graph_data(self,mesh,t):

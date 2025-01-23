@@ -9,9 +9,7 @@ import numpy as np
 from typing import List
 #%% 
 EVAL_DIR = "4Students_test_case_cropped"
-
-
-def pred_to_eval(predictions_list: List[np.ndarray] , xdmf_dir:os.PathLike):
+def pred_to_eval(predictions_list: List[np.ndarray] , xdmf_dir:os.PathLike ):
     """
     Returns eval loss based on the prediction and the xdmf_dir.
     Args:
@@ -19,6 +17,7 @@ def pred_to_eval(predictions_list: List[np.ndarray] , xdmf_dir:os.PathLike):
     Note : we cannot stack the predictions as they are not of the same size N.
     - xdmf_dir : os.PathLike, path to the xdmf files in the eval directory.
     """
+
     targets_list= []
     xdmf_files = list(str(file) for file in Path(xdmf_dir).glob("*.xdmf"))
     for filename in tqdm(xdmf_files):
@@ -35,5 +34,8 @@ def pred_to_eval(predictions_list: List[np.ndarray] , xdmf_dir:os.PathLike):
     preds_concat = np.concatenate(predictions_list, axis = 1)  
     targets_concat = np.concatenate(targets_list, axis = 1)
     loss = np.linalg.norm((preds_concat - targets_concat).flatten())
-    return loss 
+    return loss, targets_list
 
+
+
+# %%

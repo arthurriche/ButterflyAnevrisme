@@ -8,7 +8,3 @@ filename = list(filenames)[0]
 filename = str(filename)
 meshes = xdmf_to_meshes(filename)
 # %%
-print(len(meshes))
-
-
-# %%
