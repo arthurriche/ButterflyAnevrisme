@@ -6,7 +6,7 @@ from torch_geometric.data import Data
 from dataloader import Dataset, DataLoader
 from model.gnn import EncodeProcessDecode, Simulator
 #%%
-def pred(nb_timestep:int, graph:Data, graph0:Data, model, device:torch.device):
+def pred(nb_timestep:int, graph:Data, graph0:Data, model, device:torch.device) -> list[Data]:
     """Predict the future states of a graph using the given model, and the first two graph."""
     graph0 = graph0.to(device)
     graph = graph.to(device)
@@ -125,7 +125,27 @@ simulator = Simulator(
     device=device,
     time_index=4
 )
-MODEL_FILE = "trained_model/simulator_epoch_0-3.pth"
+#%%
+MODEL_FILE = "dummy_outputs/simulator_epoch_1.pth"
 assert Path(MODEL_FILE).exists(), "Model not found."
-state_dict = torch.load(MODEL_FILE, map_location=torch.device('cpu'))
-simulator.load_checkpoint(MODEL_FILE)
+dicts = torch.load(MODEL_FILE, map_location=torch.device("cpu"))
+#%% 
+import torch
+from pathlib import Path
+
+# Path to the saved model file
+MODEL_FILE = "outputs/model_v1/simulator_epoch_1.pth"
+
+# Ensure the file exists
+assert Path(MODEL_FILE).exists(), "Model not found."
+
+# Load the saved dictionary
+checkpoint = torch.load(MODEL_FILE, map_location="cpu")
+# %%
+for k in checkpoint.keys():
+    print(k)
+
+# %%
+print(list(checkpoint.keys()))
+
+# %%

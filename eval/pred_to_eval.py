@@ -9,7 +9,7 @@ import numpy as np
 from typing import List
 #%% 
 EVAL_DIR = "4Students_test_case_cropped"
-def pred_to_eval(predictions_list: List[np.ndarray] , xdmf_dir:os.PathLike ):
+def pred_to_eval_loss(predictions_list: List[np.ndarray] , xdmf_dir:os.PathLike ):
     """
     Returns eval loss based on the prediction and the xdmf_dir.
     Args:
@@ -39,3 +39,6 @@ def pred_to_eval(predictions_list: List[np.ndarray] , xdmf_dir:os.PathLike ):
 
 
 # %%
+# function 
+# - model outputs and normalizer .pth files 
+# - predictions (graphs: list[Data])
