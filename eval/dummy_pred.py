@@ -36,7 +36,6 @@ import matplotlib.pyplot as plt
 preds_concat = np.concatenate(predictions_list, axis = 1)  
 targets_concat = np.concatenate(targets_list, axis = 1)
 preds_concat.shape, targets_concat.shape
-#%%
 losses = [np.linalg.norm((preds_concat[t] - targets_concat[t]).flatten()) for t in range(targets_concat.shape[0])]
 losses 
 # plot mse loss with respect to each timestep, constant model

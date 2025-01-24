@@ -7,3 +7,4 @@ trained_model
 model
 __pycache__
 dummy_outputs
+outputs

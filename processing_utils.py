@@ -141,3 +141,34 @@ def create_mock_mesh() -> meshio.Mesh:
     )
     print("Mock mesh created.")
     return mesh
+
+def graphs_to_meshes(graphs: List, initial_mesh: meshio.Mesh) -> List[meshio.Mesh]:
+    """
+    Converts a list of graph data objects to a list of meshio.Mesh objects.
+
+    graphs: List of graph data objects containing node features (x).
+    initial_mesh: The initial mesh object (from timestep 0 or 1) containing points and cells.
+
+    Returns: List of meshio.Mesh objects for each timestep.
+    """
+    points = initial_mesh.points
+    cells = initial_mesh.cells
+    meshes = []
+
+    for i, graph in enumerate(graphs):
+        # Extract Vitesse and Pression from graph.x
+        vitesse = graph.x[:, :3].cpu().numpy()  # First three columns
+        pression = graph.x[:, 3].cpu().numpy()  # Fourth column
+
+        # Create point data
+        point_data = {
+            "Vitesse": vitesse,
+            "Pression": pression
+        }
+
+        # Create a new mesh with the same points and cells, and updated point_data
+        mesh = meshio.Mesh(points, cells, point_data=point_data)
+        meshes.append(mesh)
+
+    print(f"Converted {len(meshes)} graphs to meshes.")
+    return meshes
