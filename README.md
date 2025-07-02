@@ -221,8 +221,8 @@ Ce projet est sous licence MIT - voir le fichier [LICENSE](LICENSE) pour plus de
 ## 👨‍💻 Author
 
 **Arthur Riche**
-- LinkedIn: [Arthur Riche](https://www.linkedin.com/in/arthurriche/)
-- Email: arthur.riche@example.com
+- LinkedIn: [Arthur Riche]([https://www.linkedin.com/in/arthurriche/](https://www.linkedin.com/in/arthur-riché-7a277719a/))
+- Email: arthur57140@gmail.com
 
 ## 🙏 Acknowledgments
 
